@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"image/png"
 	"io"
+	"log"
 	"net/url"
 	"time"
 
@@ -129,7 +130,32 @@ func verifyAt(code, secret string, timestamp time.Time) bool {
 }
 
 func (store *Store) VerifyAndConsume(ctx context.Context, userID int64, code, secret string) (bool, error) {
-	return verifyAt(code, secret, store.now()), nil
+
+	currentTime := store.now()
+
+	timeStep := currentTime.Unix() / totpPeriodSeconds
+
+	verified := verifyAt(code, secret, currentTime)
+	if !verified {
+		return false, nil
+	}
+
+	result, err := store.queries.ConsumeTOTPStep(ctx, dbgen.ConsumeTOTPStepParams{TimeStep: &timeStep, UserID: userID})
+	if err != nil {
+		return false, fmt.Errorf("atomically record step for user: %w", err)
+	}
+	rowsUpdated, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("get number of rows updated: %w", err)
+	}
+
+	log.Printf("Rows affected: %v", rowsUpdated)
+	if rowsUpdated == 1 {
+		return true, nil
+	} else {
+		return false, nil
+	}
+
 }
 
 func (store *Store) ConfirmEnrollment(ctx context.Context, userID int64) ([]string, error) {
