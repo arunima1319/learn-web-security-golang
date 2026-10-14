@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"net/url"
 
 	"github.com/bootdotdev/learn-web-security/internal/httpx"
 	"github.com/bootdotdev/learn-web-security/internal/logging"
@@ -36,6 +37,42 @@ func addNoSniffHeader(next http.Handler) http.Handler {
 	})
 }
 
+func verifyRequestSource(appOrigin string, renderer *templates.Renderer) middleware{
+	return func(next http.Handler) http.Handler{
+		return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request){
+			if request.Method == "POST"{
+				origin := request.Header.Get("Origin")
+				if origin!= ""{
+					if appOrigin != origin{
+						httpx.RespondWithErrorPage(responseWriter, renderer, http.StatusForbidden, "Unverified request source", "")
+						return
+					}
+				}else{
+					referer := request.Header.Get("Referer")
+					
+					if referer == ""{
+						httpx.RespondWithErrorPage(responseWriter, renderer, http.StatusForbidden, "Unverified request source", "")
+						return
+					}else{
+						parsedURL, err := url.Parse(referer)
+						if err!=nil{
+							httpx.RespondWithErrorPage(responseWriter, renderer, http.StatusForbidden, "Unverified request source", "")
+							return
+						}
+						parsedOrigin := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
+						if appOrigin != parsedOrigin {
+							httpx.RespondWithErrorPage(responseWriter, renderer, http.StatusForbidden, "Unverified request source", "")
+							return
+						}
+					}
+				}
+			}
+
+			next.ServeHTTP(responseWriter, request)
+		})
+	}
+
+}
 func permissiveCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		if origin := request.Header.Get("Origin"); origin != "" {
