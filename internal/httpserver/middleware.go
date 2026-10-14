@@ -9,12 +9,12 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"net/url"
 
 	"github.com/bootdotdev/learn-web-security/internal/httpx"
 	"github.com/bootdotdev/learn-web-security/internal/logging"
@@ -37,25 +37,32 @@ func addNoSniffHeader(next http.Handler) http.Handler {
 	})
 }
 
-func verifyRequestSource(appOrigin string, renderer *templates.Renderer) middleware{
-	return func(next http.Handler) http.Handler{
-		return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request){
-			if request.Method == "POST"{
+func addContentSecurityPolicyHeader(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		responseWriter.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'")
+		next.ServeHTTP(responseWriter, request)
+	})
+}
+
+func verifyRequestSource(appOrigin string, renderer *templates.Renderer) middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+			if request.Method == "POST" {
 				origin := request.Header.Get("Origin")
-				if origin!= ""{
-					if appOrigin != origin{
+				if origin != "" {
+					if appOrigin != origin {
 						httpx.RespondWithErrorPage(responseWriter, renderer, http.StatusForbidden, "Unverified request source", "")
 						return
 					}
-				}else{
+				} else {
 					referer := request.Header.Get("Referer")
-					
-					if referer == ""{
+
+					if referer == "" {
 						httpx.RespondWithErrorPage(responseWriter, renderer, http.StatusForbidden, "Unverified request source", "")
 						return
-					}else{
+					} else {
 						parsedURL, err := url.Parse(referer)
-						if err!=nil{
+						if err != nil {
 							httpx.RespondWithErrorPage(responseWriter, renderer, http.StatusForbidden, "Unverified request source", "")
 							return
 						}
