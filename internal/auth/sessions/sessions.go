@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+	"crypto/subtle"
 
 	"github.com/bootdotdev/learn-web-security/internal/accounts"
 )
@@ -37,8 +38,16 @@ func RequireWithReturnTo(responseWriter http.ResponseWriter, request *http.Reque
 	return accounts.CurrentSession{}, false, nil
 }
 
-func CSRFTokensMatch(_, _ string) bool {
-	return true
+func CSRFTokensMatch(expectedToken, submittedToken string) bool {
+	if len(expectedToken) != len(submittedToken){
+		return false
+	}
+
+	if subtle.ConstantTimeCompare([]byte(expectedToken), []byte(submittedToken)) != 1 {
+		return false
+	}
+
+	return true 
 }
 
 func HasRecentAuthentication(current accounts.CurrentSession, now time.Time) bool {
